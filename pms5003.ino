@@ -29,6 +29,17 @@
  * Do not forget to define the radio type correctly in
  * arduino-lmic/project_config/lmic_project_config.h or from your BOARDS.txt.
  *
+ *******************************************************************************
+ *
+ *  The sample LMIC code as outlined above was modified to 
+ *
+ *  1) Support sleep mode of the microcontroller
+ *  2) Support reading the following sensors
+ *
+ *     a) PMS 5003 (air particle sensor)
+ *     b) BME280 sensor (temperature, humidity and pressure) 
+ *     c) MICS-6814 Air Quality CO NO2 NH3 (Carbon Monixide, Ammonia, NO2) 
+ *
  *******************************************************************************/
 
 #include <lmic.h>
