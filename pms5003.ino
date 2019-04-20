@@ -29,40 +29,32 @@
  * Do not forget to define the radio type correctly in
  * arduino-lmic/project_config/lmic_project_config.h or from your BOARDS.txt.
  *
- *******************************************************************************
- *
- *  The sample LMIC code as outlined above was modified to 
- *
- *  1) Support sleep mode of the microcontroller
- *  2) Support reading the following sensors
- *
- *     a) PMS 5003 (air particle sensor)
- *     b) BME280 sensor (temperature, humidity and pressure) 
- *     c) MICS-6814 Air Quality CO NO2 NH3 (Carbon Monixide, Ammonia, NO2) 
- *
  *******************************************************************************/
 
 #include <lmic.h>
 #include <hal/hal.h>
 #include <SPI.h>
 #include <Adafruit_SleepyDog.h>
+#include <Arduino.h>
 
+#include <Adafruit_BME280.h>
+Adafruit_BME280 bme280;
 
 // This EUI must be in little-endian format, so least-significant-byte
 // first. When copying an EUI from ttnctl output, this means to reverse
 // the bytes. For TTN issued EUIs the last bytes should be 0xD5, 0xB3,
 // 0x70.
-static const u1_t PROGMEM APPEUI[8]= { 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0xB3, 0x70 };
+static const u1_t PROGMEM APPEUI[8]= { 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55 };
 void os_getArtEui (u1_t* buf) { memcpy_P(buf, APPEUI, 8);}
 
 // This should also be in little endian format, see above.
-static const u1_t PROGMEM DEVEUI[8]= { 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11 };
+static const u1_t PROGMEM DEVEUI[8]= { 0x73, 0xAA, 0xD8, 0xC0, 0x37, 0x96, 0xF6, 0x00 };
 void os_getDevEui (u1_t* buf) { memcpy_P(buf, DEVEUI, 8);}
 
 // This key should be in big endian format (or, since it is not really a
 // number but a block of memory, endianness does not really apply). In
 // practice, a key taken from the TTN console can be copied as-is.
-static const u1_t PROGMEM APPKEY[16] = { 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11 };
+static const u1_t PROGMEM APPKEY[16] = { 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55 };
 void os_getDevKey (u1_t* buf) {  memcpy_P(buf, APPKEY, 16);}
 
 
@@ -79,6 +71,8 @@ int sleepcycles = 20;     // for the feather M0 1 sleep cycle is about 15 second
 bool sleeping = false;
 
 // PMS Sensor
+int pmsSetPin = 12;
+
 
 const int PM_MESSAGE_LENGTH = 30;
 unsigned char pmMessageBuffer[PM_MESSAGE_LENGTH];
@@ -86,11 +80,47 @@ unsigned char pmMessageBuffer[PM_MESSAGE_LENGTH];
 //const char PM_MESSAGE_START_TOKEN[2] = {(char) 0x42, (char) 0x4d};      // Rory: commented this out, it was getting corrupted when do_send(&sendjob) is in the code below, Suspect compiler issuer. Moved to function its used in, it is a constant anyway.
 
 const int PM_HEADER_SUM = 0x42+0x4d;
-const int PM_1_0_INDEX = 8;  // Currently unused
+const int PM_1_0_INDEX = 8;  
 const int PM_2_5_INDEX = 10;
 const int PM_10_INDEX = 12;
-int pm10;
+int pm1;
 int pm25;
+int pm10;
+
+
+float finalTemp;
+int  finalTemp100;
+byte highbytetemp;
+byte lowbytetemp;
+
+
+float finalPressure;
+int  finalPres100;
+byte highbytepres;
+byte lowbytepres;
+
+float finalHum;
+int  finalHum100;
+byte highbytehum;
+byte lowbytehum;
+
+
+byte highbyte1;
+byte lowbyte1;
+
+
+byte highbyte25;
+byte lowbyte25;
+
+
+byte highbyte10;
+byte lowbyte10;
+
+
+
+
+
+
 
 
 // Pin mapping
@@ -107,6 +137,10 @@ void setup() {
     Serial.println(F("Starting setup routine ..."));
     pinMode(LED_BUILTIN, OUTPUT);
     digitalWrite(LED_BUILTIN, LOW);
+
+
+    pinMode(pmsSetPin, OUTPUT);
+
     delay(1000);
     flash_led(10);
     delay(1000);
@@ -116,7 +150,12 @@ void setup() {
     delay(1000);
 
 
+    Serial.println(F("Serial 1 started ..now initilise the BME280 start"));
+    bme280.begin();
 
+    delay(2000);
+
+    
     Serial.println(F("Serial 1 started ..init and reset LMIC"));
     delay(2000);
     
@@ -135,8 +174,11 @@ void loop() {
  
     Serial.print("in Loop: Must give the sensor time to adjust, wait 20 seconds");
     flash_led(5);
+    delay(4000);
+    // turn on the PMS5003
 
-
+      Serial.println("Set PMS SET Pin HIGH and wait 20 seconds ......");
+    digitalWrite(pmsSetPin, HIGH);
     delay(20000);
 
 
@@ -155,7 +197,11 @@ void loop() {
    Serial.print("Set Sleeping false");
    sleeping = false;
 
-   
+  Serial.println("Set PMS SET Pin LOW to turn off and wait 10 seconds ......");
+  digitalWrite(pmsSetPin, LOW);
+  delay(10000);
+
+         
   Serial.print("Enter Watchdog Sleep loop");
 
  
@@ -297,24 +343,102 @@ void do_send(osjob_t* j){
     if (LMIC.opmode & OP_TXRXPEND) {
         Serial.println(F("OP_TXRXPEND, not sending"));
     } else {
+        delay(1000);
+        // read the bme280 data 
+        
+        float temperature = bme280.readTemperature();
+        float pressure = bme280.readPressure() / 100.0F;
+        float humidity = bme280.readHumidity();
+         
+        Serial.println("Temp is : ");
+        Serial.println(temperature);
+        Serial.println("Pressure is : ");
+        Serial.println(pressure);        
+        Serial.println("Humidity is : ");
+        Serial.println(humidity);
+        
+       
+                 
+        delay(1000);
+      
+        
 
         // read the PMS sensor to get the data
 
         Serial.println(F("Read PMS sensor ..."));
         updatePMBuffer();
+        
+        pm1 = readPM1();    // pm 1.0
+        pm25 = readPM25();   // pm 2.5
+        pm10 = readPM10();  // pm 10
 
-        pm25 = readPM2_5();
-        pm10 = readPM10();
-
-        Serial.println("PM25 is : ");
+        Serial.println("PM1.0 is : ");
+        Serial.println(pm1);
+        
+        Serial.println("PM2.5 is : ");
         Serial.println(pm25);
 
-        Serial.println("PM10 is : ");
+        
+        
+        
+        Serial.println("PM10.0 is : ");
         Serial.println(pm10);
+
+       
+
+         
+        
+        finalTemp = temperature;
+        finalTemp100 =  finalTemp *100;
+        highbytetemp = highByte(finalTemp100);
+        lowbytetemp = lowByte(finalTemp100);
+
+
+        finalPressure = pressure;
+       // finalPres100 =  finalPressure *100;
+        finalPres100 =  finalPressure*1;
+        highbytepres = highByte(finalPres100);
+        lowbytepres = lowByte(finalPres100);
+
+
+
+        finalHum = humidity;
+        finalHum100 =  finalHum *100;
+        highbytehum = highByte(finalHum100);
+        lowbytehum = lowByte(finalHum100);
+
+        highbyte1 = highByte(pm1);
+        lowbyte1 = lowByte(pm1);
+
+        highbyte25 = highByte(pm25);
+        lowbyte25 = lowByte(pm25);
+
+      
+        highbyte10 = highByte(pm10);
+        lowbyte10 = lowByte(pm10);
+       
+
+
+
+
+
+        uint8_t messagePacket[] ={highbytetemp,lowbytetemp,highbytepres,lowbytepres,highbytehum,lowbytehum,highbyte1,lowbyte1,highbyte25,lowbyte25,highbyte10,lowbyte10,};
+
+        Serial.println("ARRAY Is  ");
+        int i;
+        for (i = 0; i < 12; i = i + 1) {
+        Serial.println(messagePacket[i]);
+        }
+        Serial.println("DONE ARRAY");
+
+
         
         Serial.println("Send the message");
         // Prepare upstream data transmission at the next possible time.
-        LMIC_setTxData2(1, mydata, sizeof(mydata)-1, 0);
+       // LMIC_setTxData2(1, mydata, sizeof(mydata)-1, 0); working
+       
+        LMIC_setTxData2(1, messagePacket, sizeof(messagePacket), 0);
+       
         Serial.println(F("Packet queued"));
     }
     // Next TX is scheduled after TX_COMPLETE event.
@@ -353,15 +477,18 @@ const char PM_MESSAGE_START_TOKEN[2] = {(char) 0x42, (char) 0x4d};
 }
 
 
+int readPM1() {
+    return readPMValueFromBuffer( PM_1_0_INDEX );
+}
 
-int readPM2_5() {
+int readPM25() {
     return readPMValueFromBuffer( PM_2_5_INDEX );
 }
+
 
 int readPM10() {
     return readPMValueFromBuffer( PM_10_INDEX );
 }
-
 
 int readPMValueFromBuffer( int index ) {
     return ((pmMessageBuffer[index]<<8) + pmMessageBuffer[index+1]);
@@ -374,7 +501,7 @@ int readPMValueFromBuffer( int index ) {
 
 void flash_led(int numFlashes)
 {
-  for (int i = 0; i <= numFlashes; i++) 
+  for (int i = 0; i < numFlashes; i++) 
   {
     digitalWrite(LED_BUILTIN, HIGH);
     delay(200);
