@@ -31,6 +31,18 @@
  *
  *******************************************************************************/
 
+
+
+ /****************************************************************************
+  * Rory Gleeson
+  * AirWatch modifications
+  * 
+  * Support for BME280 sensor added (Temp, Humidity, Pressure)
+  * Support for PMS5003 sensor (PM1.0, PM 2.5, PM 10.0)
+  * Added sleep mode for low power consumption. This involves using watchdog and sleep mode
+  * Tested on AS923 TTN
+  */
+
 #include <lmic.h>
 #include <hal/hal.h>
 #include <SPI.h>
@@ -48,13 +60,14 @@ static const u1_t PROGMEM APPEUI[8]= { 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55,
 void os_getArtEui (u1_t* buf) { memcpy_P(buf, APPEUI, 8);}
 
 // This should also be in little endian format, see above.
-static const u1_t PROGMEM DEVEUI[8]= { 0x73, 0xAA, 0xD8, 0xC0, 0x37, 0x96, 0xF6, 0x00 };
+static const u1_t PROGMEM DEVEUI[8]= { 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55 };
 void os_getDevEui (u1_t* buf) { memcpy_P(buf, DEVEUI, 8);}
 
 // This key should be in big endian format (or, since it is not really a
 // number but a block of memory, endianness does not really apply). In
 // practice, a key taken from the TTN console can be copied as-is.
-static const u1_t PROGMEM APPKEY[16] = { 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55 };
+static const u1_t PROGMEM APPKEY[16] = {0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55};
+
 void os_getDevKey (u1_t* buf) {  memcpy_P(buf, APPKEY, 16);}
 
 
@@ -177,7 +190,7 @@ void loop() {
     delay(4000);
     // turn on the PMS5003
 
-      Serial.println("Set PMS SET Pin HIGH and wait 20 seconds ......");
+    Serial.println("Set PMS SET Pin HIGH and wait 20 seconds ......");
     digitalWrite(pmsSetPin, HIGH);
     delay(20000);
 
